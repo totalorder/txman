@@ -1,0 +1,10 @@
+version: '2.1'
+services:
+  postgres:
+    image: postgres:10.3
+    environment:
+      POSTGRES_USER: txmantest
+      POSTGRES_PASSWORD: txmantest
+      POSTGRES_DB: txmantest
+    ports:
+      - 5432
