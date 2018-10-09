@@ -1,4 +1,4 @@
-# TxMan
+# TxMan [![Build Status](https://travis-ci.com/totalorder/txman.svg?branch=master)](https://travis-ci.com/totalorder/txman)
 Zero-dependency transaction-safe JDBC-connector
 
 ## Usage
