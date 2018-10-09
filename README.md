@@ -1,18 +1,23 @@
-# TxMan [![Build Status](https://travis-ci.com/totalorder/txman.svg?branch=master)](https://travis-ci.com/totalorder/txman)
+# TxMan
 Zero-dependency transaction-safe JDBC-connector
+
+[![Build Status](https://travis-ci.com/totalorder/txman.svg?branch=master)](https://travis-ci.com/totalorder/txman)
+[![Maven Central](https://img.shields.io/maven-central/v/se.deadlock/txman.svg)](https://search.maven.org/artifact/se.deadlock/txman)
 
 ## Usage
 
-Setup, insert and query
+Setup and create a table
  
 ```java
 DataSource dataSource = createDataSource(); // Pick your JDBC-DataSource of choice
 TxMan txMan = new TxMan(dataSource);
 txMan.begin(tx -> tx.update("CREATE TABLE record (key INT PRIMARY KEY, value TEXT)"));
+```
 
+Insert a row and query it in the same transaction
+```java
 List<String> records = txMan.begin(tx -> {
-  int numInserted = tx.update("INSERT INTO record (key, value) VALUES (?, ?)", 123, "abc")
-  System.out.println(numInserted) // Prints 1
+  tx.update("INSERT INTO record (key, value) VALUES (?, ?)", 123, "abc");
   return tx.execute("SELECT * FROM record", (ResultSet rs) -> rs.getString("value"));
 });
 System.out.println(records) // Prints ["abc"]
@@ -37,6 +42,15 @@ RowMapper<Record> rowMapper = rs -> new Record(rs.getInt("id"), rs.getString("va
 
 Record record = txMan.begin(tx -> tx.executeOne("SELECT * FROM record LIMIT 1", rowMapper));
 System.out.println(record) // Prints Record(id=123,value="abc")
+```
+
+Rollback a transaction
+```java
+txMan.begin(tx -> { 
+  tx.update("INSERT INTO record (key, value) VALUES (?, ?)", 123, "abc");
+  tx.setRollback();
+  return null;
+});
 ```
 
 ## Example Postgres data source
