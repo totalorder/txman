@@ -26,9 +26,7 @@ class TestUtil {
     dbConfig.setJdbcUrl("jdbc:postgresql://localhost:" + port + "/txmantest");
     dbConfig.setUsername("txmantest");
     dbConfig.setPassword("txmantest");
-    dbConfig.setMaximumPoolSize(10);
-    dbConfig.addDataSourceProperty("cachePrepStmts", "true");
-    dbConfig.addDataSourceProperty("prepStmtCacheSize", "250");
+    dbConfig.setMaximumPoolSize(1);
     return new HikariDataSource(dbConfig);
   }
 

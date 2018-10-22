@@ -5,8 +5,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.StringJoiner;
 
 public class Tx {
   private final Connection connection;
@@ -25,7 +27,11 @@ public class Tx {
     this.connection = connection;
   }
 
-  public <T> Optional<T> executeOne(final String sql, final RowMapper<T> rowMapper, final Object... parameters) {
+  public <T> Optional<T> executeOne(final String sql, final RowMapper<T> rowMapper) {
+    return executeOne(sql, rowMapper, Collections.emptyList());
+  }
+
+  public <T> Optional<T> executeOne(final String sql, final RowMapper<T> rowMapper, final List<Object> parameters) {
     final List<T> results = execute(sql, rowMapper, parameters);
     if (results.size() > 1) {
       throw new RuntimeException("Multiple results returned! " + sql);
@@ -34,7 +40,11 @@ public class Tx {
     return results.size() == 1 ? Optional.of(results.get(0)) : Optional.empty();
   }
 
-  public <T> List<T> execute(final String sql, final RowMapper<T> rowMapper, final Object... parameters) {
+  public <T> List<T> execute(final String sql, final RowMapper<T> rowMapper) {
+    return execute(sql, rowMapper, Collections.emptyList());
+  }
+
+  public <T> List<T> execute(final String sql, final RowMapper<T> rowMapper, final List<Object> parameters) {
     try {
       final ResultSet resultSet = prepareStatement(sql, parameters).executeQuery();
       final List<T> results = new ArrayList<>();
@@ -47,7 +57,11 @@ public class Tx {
     }
   }
 
-  public int update(final String sql, final Object... parameters) {
+  public int update(final String sql) {
+    return update(sql, Collections.emptyList());
+  }
+
+  public int update(final String sql, final List<Object> parameters) {
     try {
       return prepareStatement(sql, parameters).executeUpdate();
     } catch (SQLException e) {
@@ -55,16 +69,39 @@ public class Tx {
     }
   }
 
-  private PreparedStatement prepareStatement(final String sql, final Object... parameters) throws SQLException {
-    final PreparedStatement statement = connection.prepareStatement(sql);
-    for (int index = 0; index < parameters.length; index++) {
+  private PreparedStatement prepareStatement(final String sql, final List<Object> parameters) throws SQLException {
+    final String expandedSql = expandLists(sql, parameters);
+
+    final PreparedStatement statement = connection.prepareStatement(expandedSql);
+    for (int index = 0; index < parameters.size(); index++) {
       try {
-        statement.setObject(index + 1, parameters[index]);
+        statement.setObject(index + 1, parameters.get(index));
       } catch (SQLException e) {
         throw new RuntimeException(e);
       }
     }
     return statement;
+  }
+
+  public static String expandLists(String sql, List<Object> parameters) {
+    int lastParamStringIndex = -1;
+    for (int index = 0; index < parameters.size(); index++) {
+      Object param = parameters.get(index);
+      lastParamStringIndex = sql.indexOf("?", lastParamStringIndex + 1);
+      if (param instanceof List) {
+        final StringJoiner joiner = new StringJoiner(", ");
+        parameters.remove(index);
+        for (final Object paramValue : (List)param) {
+          joiner.add("?");
+          parameters.add(index, paramValue);
+          index++;
+        }
+        index--;
+        sql = sql.substring(0, lastParamStringIndex) + joiner.toString() + sql.substring(lastParamStringIndex + 1);
+        lastParamStringIndex += joiner.toString().length();
+      }
+    }
+    return sql;
   }
 
   public void setRollback() {

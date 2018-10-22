@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.is;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -65,7 +66,7 @@ class TxManTest {
   @Test
   void execute() {
     final List<Record> records = txMan.begin(tx -> {
-      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", 123, "abc"), is(1));
+      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", listOf(123, "abc")), is(1));
       return tx.execute("SELECT * FROM record", recordMapper);
     });
 
@@ -73,8 +74,18 @@ class TxManTest {
   }
 
   @Test
+  void executeInList() {
+    final List<Record> records = txMan.begin(tx -> {
+      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", listOf(123, "abc")), is(1));
+      return tx.execute("SELECT * FROM record WHERE key IN (?)", recordMapper, listOf(listOf(123, 456)));
+    });
+
+    assertThat(records, is(listOf(new Record(123, "abc"))));
+  }
+
+  @Test
   void executeReadOnly() {
-    txMan.begin(tx -> tx.update("INSERT INTO record (key, value) VALUES (?, ?);", 123, "abc"));
+    txMan.begin(tx -> tx.update("INSERT INTO record (key, value) VALUES (?, ?);", listOf(123, "abc")));
 
     final List<Record> records = txMan.beginReadonly(tx ->
         tx.execute("SELECT * FROM record", recordMapper));
@@ -83,9 +94,17 @@ class TxManTest {
   }
 
   @Test
+  void expandLists() {
+    final List<Object> parameters = listOf("abc", listOf(123, 456), "def", listOf(789, 123));
+    final String sql = Tx.expandLists("SELECT * FROM record WHERE key = ? AND key IN (?) AND value = ? AND value IN (?)", parameters);
+    assertThat(sql, is("SELECT * FROM record WHERE key = ? AND key IN (?, ?) AND value = ? AND value IN (?, ?)"));
+    assertThat(parameters, is(listOf("abc", 123, 456, "def", 789, 123)));
+  }
+
+  @Test
   void executeRollback() {
     final List<Record> records = txMan.begin(tx -> {
-      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", 123, "abc"), is(1));
+      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", listOf(123, "abc")), is(1));
       final List<Record> result = tx.execute("SELECT * FROM record", recordMapper);
       tx.setRollback();
       return result;
@@ -128,6 +147,6 @@ class TxManTest {
   );
 
   private <T> List<T> listOf(T... elements) {
-    return Arrays.asList(elements);
+    return new ArrayList<>(Arrays.asList(elements));
   }
 }
