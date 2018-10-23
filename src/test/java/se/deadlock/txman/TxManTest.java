@@ -7,7 +7,9 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
@@ -66,7 +68,10 @@ class TxManTest {
   @Test
   void execute() {
     final List<Record> records = txMan.begin(tx -> {
-      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", listOf(123, "abc")), is(1));
+      assertThat(tx.update("INSERT INTO record (key, value) VALUES (:key, :value)", tx.params()
+          .put("key", 123)
+          .put("value", "abc")
+          .build()), is(1));
       return tx.execute("SELECT * FROM record", recordMapper);
     });
 
@@ -76,8 +81,15 @@ class TxManTest {
   @Test
   void executeInList() {
     final List<Record> records = txMan.begin(tx -> {
-      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", listOf(123, "abc")), is(1));
-      return tx.execute("SELECT * FROM record WHERE key IN (?)", recordMapper, listOf(listOf(123, 456)));
+      assertThat(tx.update("INSERT INTO record (key, value) VALUES (:key, :value)", tx.params()
+          .put("key", 123)
+          .put("value", "abc")
+          .build()), is(1));
+      return tx.execute("SELECT * FROM record WHERE key IN (:keys) AND value = :value", tx.params()
+              .put("keys", listOf(123, 456))
+              .put("value", "abc")
+              .build(),
+          recordMapper);
     });
 
     assertThat(records, is(listOf(new Record(123, "abc"))));
@@ -85,7 +97,10 @@ class TxManTest {
 
   @Test
   void executeReadOnly() {
-    txMan.begin(tx -> tx.update("INSERT INTO record (key, value) VALUES (?, ?);", listOf(123, "abc")));
+    txMan.begin(tx -> tx.update("INSERT INTO record (key, value) VALUES (:key, :value);", tx.params()
+        .put("key", 123)
+        .put("value", "abc")
+        .build()));
 
     final List<Record> records = txMan.beginReadonly(tx ->
         tx.execute("SELECT * FROM record", recordMapper));
@@ -94,17 +109,28 @@ class TxManTest {
   }
 
   @Test
-  void expandLists() {
-    final List<Object> parameters = listOf("abc", listOf(123, 456), "def", listOf(789, 123));
-    final String sql = Tx.expandLists("SELECT * FROM record WHERE key = ? AND key IN (?) AND value = ? AND value IN (?)", parameters);
-    assertThat(sql, is("SELECT * FROM record WHERE key = ? AND key IN (?, ?) AND value = ? AND value IN (?, ?)"));
-    assertThat(parameters, is(listOf("abc", 123, 456, "def", 789, 123)));
+  void expandStatement() {
+    final Map<String, Object> parameters = new HashMap<>();
+    parameters.put("key", "abc");
+    parameters.put("keys", listOf(123, 456));
+    parameters.put("value", "def");
+    parameters.put("values", listOf(789, 123));
+
+    final Tx.ExpandedStatement expandedStatement = Tx.expandStatement(
+        "SELECT * FROM record WHERE key = :key AND key IN (:keys) AND value = :value AND value IN (:values)",
+        parameters);
+
+    assertThat(expandedStatement.sql, is("SELECT * FROM record WHERE key = ? AND key IN (?, ?) AND value = ? AND value IN (?, ?)"));
+    assertThat(expandedStatement.parameters, is(listOf("abc", 123, 456, "def", 789, 123)));
   }
 
   @Test
   void executeRollback() {
     final List<Record> records = txMan.begin(tx -> {
-      assertThat(tx.update("INSERT INTO record (key, value) VALUES (?, ?)", listOf(123, "abc")), is(1));
+      assertThat(tx.update("INSERT INTO record (key, value) VALUES (:key, :value)", tx.params()
+          .put("key", 123)
+          .put("value", "abc")
+          .build()), is(1));
       final List<Record> result = tx.execute("SELECT * FROM record", recordMapper);
       tx.setRollback();
       return result;
